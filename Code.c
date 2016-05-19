@@ -1,5 +1,3 @@
-# CPE329FinalProject
-
 #include <msp430.h> 
 #include <clockFrequencySet.h>
 
@@ -12,10 +10,10 @@ void setup(void);
 #define STOP 0x00
 #define FORWARD 0x06
 #define BACKWARD 0x09
-#define RTURN 0x04
-#define LTURN 0x02
-#define SLEFT 0x0A
-#define SRIGHT 0x07
+#define RTURN 0x02
+#define LTURN 0x04
+#define SLEFT 0x05
+#define SRIGHT 0x0A
 
 #define BR 0
 #define FR 1
@@ -37,35 +35,35 @@ int doubleHit = 0;
     WDTCTL = WDTPW | WDTHOLD;	// Stop watchdog timer
     setup();
 
-	P2OUT &= ~BIT7;
 	allStop();
-	while(!buttonHit()); //press button to start
-	P2OUT |= BIT7;
+	while(!buttonHit()){ //press button to start; calibration
+		if(P2IN & PRALL)
+			P1OUT |= BIT4 | BIT5;
+		else if(PR1 && PR2){
+			P1OUT |= BIT4;
+			P1OUT &= ~BIT5;
+		}
+		else if(PR3 && PR4){
+			P1OUT |= BIT5;
+			P1OUT &= ~BIT4;
+		}
+		else
+			P1OUT &= ~(BIT4 | BIT5);
+	}
 	__delay_cycles(1600000);
-	P2OUT &= ~BIT7;
 
 	P2IES &= ~(PRALL);				// interrupt on low to high transition
 	P2IFG &= ~(PRALL);				// Set flag off (button is not yet pressed)
 
 	int button = 0;
     while(1){
-    	if(dark){
-        	P2IE  |= PRALL;				// Interrupt enable on button
-        	_BIS_SR(GIE);
-    		while(dark){
-    			allStop();
-    		}
-    		P2IES &= ~(PRALL);				// interrupt on low to high transition
-    		motorDrive(FORWARD);
-    	}
-    	else{
-        	_BIS_SR(GIE);
+    	if(!dark){
+    		P2IE  |= PRALL;				// Interrupt enable on PR
     		motorDrive(FORWARD);
     	}
 
-    	P2IE  |= PRALL;				// Interrupt enable on PR
     	_BIS_SR(GIE);
-    	while(!(button = buttonHit()) && !dark);
+    	while(!(button = buttonHit()) && !(dark & 1));
     	_BIC_SR(GIE);
 
     	if(button & 2 && button & 1){ //emergency stop
@@ -75,19 +73,18 @@ int doubleHit = 0;
     	}
 
     	if(!dark){
-			allStop();
 			motorDrive(BACKWARD);
 			_BIS_SR(GIE);
-			__delay_cycles(700000);
+			__delay_cycles(1000000);
 			_BIC_SR(GIE);
 
 			if(button & 2){
-				doubleHit & 2 ? motorDrive(SRIGHT) : motorDrive(RTURN);
+				(doubleHit & 2) ? motorDrive(SLEFT) : motorDrive(LTURN);
 				doubleHit |= 2;
 				doubleHit &= ~1;
 			}
 			else if(button & 1){
-				doubleHit & 1 ? motorDrive(SLEFT) : motorDrive(LTURN);
+				(doubleHit & 1) ? motorDrive(SRIGHT) : motorDrive(RTURN);
 				doubleHit |= 1;
 				doubleHit &= ~2;
 			}
@@ -105,61 +102,78 @@ int doubleHit = 0;
  */
 #pragma vector=TIMER0_A0_VECTOR
 __interrupt void Timer_A(void) {
-	static int high = 0;
-	if(high = !high){
-		P2OUT |= BIT0;
-		CCR0 += 0x0100;
-	}
-	else{
-		P2OUT &= ~BIT0;
-		CCR0 += 0x0200;
-	}
 }
 
+/*
+ * #define PR1 P2IN & BIT3 //back 1
+#define PR2 P2IN & BIT4 //front 2
+#define PR3 P2IN & BIT5 //right 4
+#define PR4 P2IN & BIT6 //left 8
+ */
 #pragma vector=PORT2_VECTOR
 __interrupt void Port_2(void) {
-	/*
 	dark = dark & 0xF0 | P2IN >> 3;
 	switch(dark){
 		case 0x0F: //all dark
-			allStop();
+		case 0x01:
+			P2IE  |= PRALL;				// Interrupt enable on button
     		P2IES |= PRALL;				// interrupt on high to low transition
-			break;
+    		motorDrive(STOP);
+    		break;
 		case 0x00: //all light
+			P2IE  |= PRALL;				// Interrupt enable on button
 			P2IES &= ~(PRALL);				// interrupt on low to high transition
 			motorDrive(FORWARD);
+			break;
+		case 0x02: //just front
+			P2IE  |= PRALL;				// Interrupt enable on button
+			P2IE &= ~BIT4;
+			motorDrive(FORWARD);
+			break;
+		case 0x04: //just right
+			P2IE  |= PRALL;				// Interrupt enable on button
+			P2IE &= ~BIT5;
+		case 0x06: //front right
+			P2IE  |= PRALL;				// Interrupt enable on button
+			P2IE &= ~(BIT4 | BIT5);
+			motorDrive(RTURN);
+			break;
+		case 0x08: //just left
+			P2IE  |= PRALL;				// Interrupt enable on button
+			P2IE &= ~BIT6;
+		case 0x0A: //front left
+			P2IE  |= PRALL;				// Interrupt enable on button
+			P2IE &= ~(BIT4 | BIT6);
+			motorDrive(LTURN);
 			break;
 		default:
 
 			break;
-	}*/
-	if(!dark || ((P2IN & (PRALL)) == PRALL)){
-		dark ^= 1;
-		P2OUT ^= BIT7;
-		P2IE  &= ~(PRALL);				// Interrupt disable on button
-		P2IFG &= ~(PRALL);				// Set flag off (button is not yet pressed)
 	}
-	if(dark)
-		allStop();
+	P2IFG &= ~(PRALL);				// Set flag off (button is not yet pressed)
 }
 
 /*
  * Setup routine
  */
 void setup(){
-    P1DIR = 0xFF; //motor control output
-    P2DIR = 0x81;
+    P1DIR |= 0x0F | BIT4 | BIT5 | BIT6; //motor control output
+    P2DIR |= 0x81;
 
     //sets up P2.6 and P2.7 as I/O pin
     P2SEL &= ~(BIT7 + BIT6);
     P2SEL2 &= ~(BIT7 + BIT6);
+    P1SEL |= BIT6;                            // P1.6 TA1/2 options
 
     //interrupt pwm setup
+    TACCTL1 = OUTMOD_7;      // CCR1 reset/set
+    TACCR0 = 0x0300;         // PWM Period
+    TACCR1 = 0x0100;         // PWM duty cycle
+    TACTL = TASSEL_2 | MC_1; // SMCLK + upmode
     CCTL0 = CCIE;
-    CCR0 = 0xFF;
-    TACTL = TASSEL_2 + MC_2;
-	_BIS_SR(GIE);
+    _BIS_SR(GIE);
 }
+
 /*
  * return BIT1 == left or BIT2 == right depending on buttonpress
  * 2 if right // 1 if left
@@ -184,14 +198,6 @@ int lightCheck(){
 	if(P2IN & (PRALL))
 		return 1;
 	return 0;
-	/*
-	if(P2IN & BIT3)
-		ret |= BIT0;
-	if(P2IN & BIT4)
-		ret |= BIT1;
-	if(P2IN & BIT5)
-		ret |= BIT2;
-	return ret;*/
 }
 
 /*
@@ -199,8 +205,6 @@ int lightCheck(){
  */
 void motorDrive(int control){
 	P1OUT = P1OUT & 0xF0 | control;
-	if(dark)
-		allStop();
 }
 
 void allStop(){
