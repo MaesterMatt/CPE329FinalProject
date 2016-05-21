@@ -1,3 +1,8 @@
+/*
+ * Matthew Ng and Eric Chen
+ * CPE329 - Gerfen
+ * Final Project
+ */
 #include <msp430.h> 
 #include <clockFrequencySet.h>
 
@@ -30,7 +35,8 @@ int doubleHit = 0;
 int button = 0;
 
 /*
- * main.c
+ * main code
+ * trapps the code in an infinite loop
  */
  int main(void) {
     WDTCTL = WDTPW | WDTHOLD;	// Stop watchdog timer
@@ -107,10 +113,8 @@ int button = 0;
 
 
 /*
- * #define PR1 P2IN & BIT3 //back 1
-#define PR2 P2IN & BIT4 //front 2
-#define PR3 P2IN & BIT5 //right 4
-#define PR4 P2IN & BIT6 //left 8
+ * Interrupt vector for button
+ * pins on port 2
  */
 #pragma vector=PORT2_VECTOR
 __interrupt void Port_2(void) {
@@ -162,6 +166,8 @@ __interrupt void Port_2(void) {
 
 /*
  * Setup routine
+ * sets up the output pins, LED's
+ * and the interrupt timing vector
  */
 void setup(){
     P1DIR |= 0x0F | BIT4 | BIT5 | BIT6; //motor control output //LED's // pwm
@@ -181,8 +187,9 @@ void setup(){
 }
 
 /*
- * return BIT1 == left or BIT2 == right depending on buttonpress
- * 2 if right // 1 if left
+ * Checks the buttonHit pins
+ * Paramter: void
+ * Return: int(0x03) for input pin
  */
 int buttonHit(){
 	int ret = 0;
@@ -194,16 +201,28 @@ int buttonHit(){
 }
 
 /*
- * returns the four photoresistors
+ * Checks the photoresistor values
+ * Parameter: void
+ * Return: int (0x0F) for the pins that are dark
  */
 int lightCheck(){
 	return ((P2IN >> 3) & 0x0F);
 }
 
+/*
+ * Controls the motors with a defined input
+ * Paramter: STOP, FORWARD, BACKWARD, RTURN, LTURN, SLEFT, SRIGHT 
+ * Return: void
+ */
 void motorDrive(int control){
 	P1OUT = P1OUT & 0xF0 | control;
 }
 
+/*
+ * Automatic release of all the motors
+ * Paramter: void
+ * Return: void
+ */
 void allStop(){
 	P1OUT &= 0xF0;
 }
